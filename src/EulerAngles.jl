@@ -1,7 +1,8 @@
 module EulerAngles
-
 using LinearAlgebra
-using LoopVectorization
+export Angles
+
+
 
 mutable struct Angles{T, N, VT<:AbstractVector{T}}
     θs::VT
@@ -82,8 +83,6 @@ function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
     @inbounds begin
         n = length(e.θs)+1
         ang = e.θs
-        sins = sin.(ang)
-        push!(sins, 1.0)
         for i = 1:n-1
             out[i, i] = cos(ang[i])
         end
@@ -101,9 +100,9 @@ function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
         end
         # Region 3
         for k=1:n-1
-            s = sins[k]
+            s = - sin(ang[k])
             for i = k+1:n
-                t = - sins[i] * s
+                t = i == n ? s : sin(ang[i]) * s
                 for l in k+1:i-1
                     t *= out[l, l]
                 end
@@ -118,7 +117,7 @@ function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
             out[i, n] = out[i-1, n] * out[i-1, i - 1]
         end
         for i in 1:n-1
-            out[i, n] *= sins[i]
+            out[i, n] *= sin(ang[i])
         end
         # Region 4
         for i in 1:n-1
