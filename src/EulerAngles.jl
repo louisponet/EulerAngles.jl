@@ -79,7 +79,7 @@ function Base.Vector(e::Angles{T}) where {T}
     return out * e.r
 end
     
-function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
+@inline function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
     @inbounds begin
         n = length(e.θs)+1
         ang = e.θs
