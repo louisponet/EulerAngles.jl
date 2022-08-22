@@ -2,8 +2,6 @@ module EulerAngles
 using LinearAlgebra
 export Angles
 
-
-
 mutable struct Angles{T, N, VT<:AbstractVector{T}}
     θs::VT
     r::T
@@ -31,7 +29,12 @@ function angles!(θs, v)
     @inbounds begin    
         θs[n-1] = atan(v[end-1], v[end])
         for i = n-2:-1:1
-           θs[i] = atan(v[i], v[i+1]/sin(θs[i+1]))
+            t = sin(θs[i+1])
+            if t == 0
+                θs[i] = 0
+            else
+                θs[i] = atan(v[i], v[i+1]/t)
+            end
         end
     end
 end
