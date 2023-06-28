@@ -12,17 +12,42 @@ function Angles(v::AbstractVector)
     n = norm(v)
     return Angles(angles(v), n, (length(v),))
 end
+# function angles(v::AbstractVector)
+#     v = normalize(v)
+#     if length(v) < 2
+#         throw(ArgumentError("Length of the vector needs to be larger than 2"))
+#     end
+#     θs = similar(v, length(v) - 1)
+#     angles!(θs, v)
+#     return θs
+# end
 function angles(v::AbstractVector)
     v = normalize(v)
     if length(v) < 2
         throw(ArgumentError("Length of the vector needs to be larger than 2"))
     end
-    θs = similar(v, length(v) - 1)
-    angles!(θs, v)
-    return θs
+    n = length(v)
+    angles = Float64[]
+    for i = 1:n-1
+        v[1] = clamp(v[1], -1, 1)
+
+        θ = asin(v[1])
+        if length(v) == 2 && v[2] < 0.0
+            if θ > 0
+                θ = π - θ
+            elseif θ < 0
+                θ = - π - θ
+            end
+        end
+
+        push!(angles, θ)
+        v = v[2:end]./cos(θ)
+    end
+    return Angles(angles, 1.0, (n,n))
 end
 function angles!(θs, v)
     n = length(v)
+   
     for i = 1:n - length(θs)-1
         push!(θs, 0)
     end
@@ -60,16 +85,75 @@ function Angles(m::AbstractMatrix)
     curid = 1
     t = copy(m)
     mulcache = similar(m)
-    @inbounds for i = n:-1:2
-        finalid = curid+i-2
-        te = Angles(view(e.θs, curid:finalid), 1.0, (n,))
-        angles!(te.θs, view(t, 1:i, i))
-        mul!(mulcache, transpose(t), fill!(matcache, te))
-        curid = finalid+1
-        t, mulcache = mulcache, t
+    ret = Float64[]
+    for i in 2:n
+        # Lets take vectors starting from the last column on ortho_matrix
+        an = m[:, end]
+        # print('Vector: \n%s' % an)
+        as = angles(an)
+        # print('Angles: \n%s' % angles)
+        a = rotmat(as)
+        # print('Matrix a: \n%s' % a)
+        m = transpose(m)* a
+        # print('New matrix b: \n%s' % b)
+        m = m[1:end-1, 1:end-1]
+        # print('New matrix b (fixed): \n%s' % b)
+        append!(ret, as.θs[1:end-1])
     end
-    return e
+    
+    return Angles(ret, 1.0, (n,n))
 end
+
+function rotmat(a::Angles{T, 2}) where T
+    push!(a.θs, π/2)
+    n = a.n[1]
+    out =diagm(0 => [T(1) for i = 1:n])
+    for i in 1:n-1
+        out[i,i] = cos(a.θs[i])
+        out[i,n] = tan(a.θs[i])
+        for j = 1:i+1
+            out[i, n] *= cos(a.θs[j])
+        end
+    end
+
+    for i in 1:n
+        for k in 1:n-1
+            if i > k
+                out[i,k] = -tan(a.θs[i]) * tan(a.θs[k])
+                for l in k+1:i
+                    out[i, k] *= cos(a.θs[l])
+                end
+            end
+        end
+    end
+
+    out[n, n] = tan(a.θs[n])
+    for j in 1:n
+        out[n, n] *= cos(a.θs[j])
+    end
+    return out
+    
+end
+
+    
+# function Angles(m::AbstractMatrix)
+#     n = size(m, 1)
+#     e = Angles(zeros(div(n * (n - 1),2)), 1.0, (n,n))
+#     matcache = similar(m)
+#     curid = 1
+#     t = copy(m)
+#     mulcache = similar(m)
+#     @inbounds for i = n:-1:2
+#         finalid = curid+i-2
+#         te = Angles(view(e.θs, curid:finalid), 1.0, (n,))
+#         @show e.θs
+#         angles!(te.θs, view(t, 1:i, i))
+#         mul!(mulcache, transpose(t), fill!(matcache, te))
+#         curid = finalid+1
+#         t, mulcache = mulcache, t
+#     end
+#     return e
+# end
 
 function Base.Vector(e::Angles{T}) where {T}
     out = ones(T, e.n)
