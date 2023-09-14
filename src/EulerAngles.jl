@@ -8,18 +8,17 @@ export Angles
 #     n::NTuple{N, Int}
 # end
 #
-#
 # function Angles(v::AbstractVector)
 #     n = norm(v)
 #     return Angles(angles(v), n, (length(v),))
 # end
-#
+
 struct Angles{T, VVT<:Vector{Vector{T}}}
     θs::VVT
     flat::Vector{T}
 end
 
-function Angles(θs::Vector{Vector{T}}) where T
+function toVVA(θs::Vector{Vector{T}}) where T
     n = length(θs)
     flat = Vector{T}(undef, Int(n*(n+1)//2))
     head = 1
@@ -41,32 +40,52 @@ function Angles(flat::Vector{T}) where T
     end
     Angles(θs, flat)
 end
-# function angles(a::Angles{T}) where T
-#     a.θs 
-# end
 
+# function angles_t(t::Matrix{T}) where T
+#     ν = size(t, 1)
+#     agls = zeros(T, ν)
+#     # last angle is always π/2
+#     agls[ν] = π/2
+#     agls[ν-1] = atan(t[ν-1, ν], t[ν, ν])
+#     if t[ν, ν] / sin(agls[ν-1]) ≈ 1
+#         @info "k = ν-1:"  agls
+#         return agls
+#     end
+#     for k = ν-2:-1:1
+#         if t[k, ν] ≈ 0.
+#             agls[k] = 0 
+#             continue
+#         elseif abs(t[k, ν]) ≈ 1. 
+#             agls[k] = sign(t[k, ν]) * π/2 
+#             return agls
+#         end
+#         agls[k] = atan(t[k, ν] / t[k+1, ν] * sin(agls[k+1]))
+#     end
+#     return agls
+# end
 
 function angles_t(t::Matrix{T}) where T
     ν = size(t, 1)
-    agls = zeros(T, ν-1)
-    agls[ν-1] = atan(t[ν-1, ν], t[ν, ν])
-    if agls[ν-1] == π/2 || agls[ν-1] == -π/2
-        return push!(agls, π/2)
-    end
-    for k = ν-2:-1:1
-        agls[k] = atan(t[k, ν] / t[k+1, ν] * sin(agls[k+1]))
-        if isnan(agls[k]) || agls[k] == π/2 || agls[k] == -π/2
-            agls[k] = sign(t[k, ν]) * π/2
-            return push!(agls, π/2)
+    tν = t[:, end]
+    agls = zeros(T, ν)
+    # last angle is always π/2
+    agls[ν] = π/2
+    agls[1] = asin(tν[1])
+    Σcos::T = 1.
+    for k = 2:ν-1
+        Σcos *= cos(agls[k-1])
+        agls[k] = asin(tν[k] / Σcos)
+        if agls[k] ≈ π/2 || cos(agls[k]) ≈ 0.
+            return agls
         end
     end
-    # angles[ν] is always π/2
-    return push!(agls, π/2)
+    agls[ν-1] = atan(t[ν-1, ν], t[ν, ν])
+    return agls
 end
 
 function matrix_a(agls::Vector{T}) where T
     n = size(agls, 1)
-    ma = Matrix{T}(I, n, n)
+    ma = diagm(ones(T, n))
     for i = 1:n-1
         ma[i, i] = cos(agls[i])
         ma[i, n] = tan(agls[i])
