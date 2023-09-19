@@ -2,243 +2,126 @@ module EulerAngles
 using LinearAlgebra
 export Angles
 
-mutable struct Angles{T, N, VT<:AbstractVector{T}}
+mutable struct Angles{T, VT<:AbstractVector{T}}
     θs::VT
-    r::T
-    n::NTuple{N, Int}
+    function Angles(v::VT) where VT
+        n_angles = size(v,1)
+        n_dims = Int((sqrt(8*n_angles+1) - 1) * 0.5)
+        return new{eltype(VT), VT}(v)
+    end
 end
 
-function Angles(v::AbstractVector)
-    n = norm(v)
-    return Angles(angles(v), n, (length(v),))
+function Angles(n_dim::Int)
+    n_dim < 1 && @error  "dimension of orthogonal matrix should be larger than 1"
+    n_angles::Int = n_dim*(n_dim-1)/2
+    angles = (rand(Float64, n_angles) .- 0.5) * π
+    return Angles(angles)
 end
-# function angles(v::AbstractVector)
-#     v = normalize(v)
-#     if length(v) < 2
-#         throw(ArgumentError("Length of the vector needs to be larger than 2"))
-#     end
-#     θs = similar(v, length(v) - 1)
-#     angles!(θs, v)
-#     return θs
-# end
-function angles(v::AbstractVector)
-    v = normalize(v)
-    if length(v) < 2
-        throw(ArgumentError("Length of the vector needs to be larger than 2"))
+
+function layered_to_flat(θl::Vector{Vector{T}}) where T
+    n = length(θl)
+    flat = Vector{T}(undef, Int(n*(n+1)//2))
+    head = 1
+    for (i, len) = zip(1:n, n:-1:1)
+        flat[head:head+len-1] = θl[i]
+        head += len
     end
-    n = length(v)
-    angles = Float64[]
+    return flat
+end
+
+function flat_to_layered(flat::AbstractVector{T}) where T
+    L = size(flat, 1)
+    n = Int((sqrt(8*L+1) - 1) * 0.5)
+    θl::Vector{Vector{T}} = []
+    head = 1
+    for i =n:-1:1
+        push!(θl, flat[head:head+i-1])
+        head += i
+    end
+    return θl
+end
+
+function angles_t(t::Matrix{T}) where T
+    ν = size(t, 1)
+    tν = t[:, end]
+    agls = zeros(T, ν)
+    # last angle is always π/2
+    agls[ν] = π/2
+    agls[1] = asin(clamp(tν[1], -1, 1))
+    Σcos::T = 1.
+    for k = 2:ν-1
+        Σcos *= cos(agls[k-1])
+        agls[k] = asin(clamp(tν[k] / Σcos, -1, 1))
+        if agls[k] ≈ π/2 || cos(agls[k]) ≈ 0.
+            return agls
+        end
+    end
+    agls[ν-1] = atan(t[ν-1, ν], t[ν, ν])
+    return agls
+end
+
+function matrix_a(agls::Vector{T}) where T
+    n = size(agls, 1)
+    ma = diagm(ones(T, n))
     for i = 1:n-1
-        v[1] = clamp(v[1], -1, 1)
-
-        θ = asin(v[1])
-        if length(v) == 2 && v[2] < 0.0
-            if θ > 0
-                θ = π - θ
-            elseif θ < 0
-                θ = - π - θ
-            end
-        end
-
-        push!(angles, θ)
-        v = v[2:end]./cos(θ)
-    end
-    return Angles(angles, 1.0, (n,n))
-end
-function angles!(θs, v)
-    n = length(v)
-   
-    for i = 1:n - length(θs)-1
-        push!(θs, 0)
-    end
-    @inbounds begin    
-        θs[n-1] = atan(v[end-1], v[end])
-        for i = n-2:-1:1
-            t = sin(θs[i+1])
-            if t == 0
-                θs[i] = 0
-            else
-                θs[i] = atan(v[i], v[i+1]/t)
-            end
-        end
-    end
-end
-
-function angles!(e::Angles, v::AbstractVector)
-    r = norm(v)
-    angles!(e.θs, v./r)
-    e.r = r
-    e.n = (length(v), )
-end
-
-function angles!(e::Angles, m::AbstractMatrix)
-    r = tr(m)
-    angles!(e.θs, m)
-    e.r = r
-    e.n = size(m)
-end
-
-function Angles(m::AbstractMatrix)
-    n = size(m, 1)
-    e = Angles(zeros(div(n * (n - 1),2)), 1.0, (n,n))
-    matcache = similar(m)
-    curid = 1
-    t = copy(m)
-    mulcache = similar(m)
-    ret = Float64[]
-    for i in 2:n
-        # Lets take vectors starting from the last column on ortho_matrix
-        an = m[:, end]
-        # print('Vector: \n%s' % an)
-        as = angles(an)
-        # print('Angles: \n%s' % angles)
-        a = rotmat(as)
-        # print('Matrix a: \n%s' % a)
-        m = transpose(m)* a
-        # print('New matrix b: \n%s' % b)
-        m = m[1:end-1, 1:end-1]
-        # print('New matrix b (fixed): \n%s' % b)
-        append!(ret, as.θs[1:end-1])
-    end
-    
-    return Angles(ret, 1.0, (n,n))
-end
-
-function rotmat(a::Angles{T, 2}) where T
-    push!(a.θs, π/2)
-    n = a.n[1]
-    out =diagm(0 => [T(1) for i = 1:n])
-    for i in 1:n-1
-        out[i,i] = cos(a.θs[i])
-        out[i,n] = tan(a.θs[i])
-        for j = 1:i+1
-            out[i, n] *= cos(a.θs[j])
+        ma[i, i] = cos(agls[i])
+        ma[i, n] = tan(agls[i])
+        for j = 1:i
+            ma[i, n] *= cos(agls[j])
         end
     end
 
-    for i in 1:n
-        for k in 1:n-1
+    for i = 1:n
+        for k = 1:n-1
             if i > k
-                out[i,k] = -tan(a.θs[i]) * tan(a.θs[k])
-                for l in k+1:i
-                    out[i, k] *= cos(a.θs[l])
+                ma[i, k] = -tan(agls[i]) * tan(agls[k])
+                for l = k:i
+                    ma[i, k] *= cos(agls[l])
                 end
             end
         end
     end
-
-    out[n, n] = tan(a.θs[n])
-    for j in 1:n
-        out[n, n] *= cos(a.θs[j])
-    end
-    return out
     
-end
-
-    
-# function Angles(m::AbstractMatrix)
-#     n = size(m, 1)
-#     e = Angles(zeros(div(n * (n - 1),2)), 1.0, (n,n))
-#     matcache = similar(m)
-#     curid = 1
-#     t = copy(m)
-#     mulcache = similar(m)
-#     @inbounds for i = n:-1:2
-#         finalid = curid+i-2
-#         te = Angles(view(e.θs, curid:finalid), 1.0, (n,))
-#         @show e.θs
-#         angles!(te.θs, view(t, 1:i, i))
-#         mul!(mulcache, transpose(t), fill!(matcache, te))
-#         curid = finalid+1
-#         t, mulcache = mulcache, t
-#     end
-#     return e
-# end
-
-function Base.Vector(e::Angles{T}) where {T}
-    out = ones(T, e.n)
-    @inbounds for i = 1:e.n - 1
-        out[i] *= sin(e.θs[i])
-        for j = i+1:n
-            out[j] *= cos(e.θs[i])
-        end
+    ma[n, n] = tan(agls[n])
+    for j = 1:n
+        ma[n, n] *= cos(agls[j])
     end
-    return out * e.r
+    return ma
 end
     
-@inline function Base.fill!(out::Matrix, e::Angles{T,1}) where {T}
-    @inbounds begin
-        n = length(e.θs)+1
-        ang = e.θs
-        for i = 1:n-1
-            out[i, i] = cos(ang[i])
-        end
-        # Padding for if matrix is bigger than required
-        out[n, n] = 0.0
-        for i = n+1:e.n[1]
-            for j = 1:e.n[1]
-                out[j, i] = 0.0
-            end
-        end
-        for j = 1:e.n[1]
-            for i = n+1:e.n[1]
-                out[i, j] = i == j ? 1.0 : 0.0
-            end
-        end
-        # Region 3
-        for k=1:n-1
-            s = - sin(ang[k])
-            for i = k+1:n
-                t = i == n ? s : sin(ang[i]) * s
-                for l in k+1:i-1
-                    t *= out[l, l]
-                end
-                out[i, k] = t
-            end
-        end
-        
-        # Region 2
-        out[1, n] = 1.0
-        out[2, n] = out[1, 1]
-        for i = 3:n
-            out[i, n] = out[i-1, n] * out[i-1, i - 1]
-        end
-        for i in 1:n-1
-            out[i, n] *= sin(ang[i])
-        end
-        # Region 4
-        for i in 1:n-1
-            for j in i+1:n-1
-                out[i, j] = 0.0
-            end
-        end
-
-        return out
+function Angles(t::Matrix{T}) where T
+    @assert [norm(t[:,i]) for i in 1:size(t, 2)] ≈ ones(size(t, 1))
+    n = size(t, 1)
+    res::Vector{Vector{T}} = []
+    mat_t = deepcopy(t)
+    for _ = 2:n
+        agls = angles_t(mat_t)
+        a = matrix_a(agls) 
+        tmp = similar(mat_t)
+        mul!(tmp, a', mat_t) 
+        mat_t = tmp[1:end-1, 1:end-1]
+        # remove the last angle π/2
+        push!(res, agls[1:end-1])
     end
+    flat = layered_to_flat(res)
+    return Angles(flat)
 end
-
-function Base.Matrix(e::Angles)
-    out = similar(e.θs, e.n[1], e.n[1])
-    return fill!(out, e)
-end
-
-function Base.Matrix(e::Angles{T, 2}) where {T}
-    n = e.n[1]
-    norm = e.r/n
-    out = Matrix(diagm(0 => ones(T,n)))
-    matcache = similar(out)
-    mulcache = copy(out)
-    ang = e.θs
-    curid = length(ang)
-    @inbounds for i = 2:n
-        finalid = curid+i-2
-        te = Angles(view(e.θs, curid:finalid), 1.0, (n,))
-        mul!(mulcache, fill!(matcache, te), transpose(out))
-        out, mulcache = mulcache, out
-        curid -= i
+    
+function Base.Matrix(angles::Angles{T}) where T
+    flat = angles.θs
+    agls = flat_to_layered(flat)
+    n = size(agls, 1) + 1
+    b_mat = diagm(ones(T, n))
+    for i = 1:n-1
+        size_a = size(agls[i], 1) + 1
+        tmp_agl = deepcopy(agls[i])
+        push!(tmp_agl, π/2)
+        padded = Matrix{T}(I, n, n)
+        padded[1:size_a,1:size_a] = matrix_a(tmp_agl)
+        b_mat = b_mat * padded
     end
-    return out
+    return b_mat
 end
-
 
 end # module EulerAngles
+
