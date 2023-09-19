@@ -2,12 +2,12 @@ module EulerAngles
 using LinearAlgebra
 export Angles
 
-mutable struct Angles{T}
-    θs::AbstractVector{T}
-    function Angles(v::AbstractVector{T}) where T
+mutable struct Angles{T, VT<:AbstractVector{T}}
+    θs::VT
+    function Angles(v::VT) where VT
         n_angles = size(v,1)
         n_dims = Int((sqrt(8*n_angles+1) - 1) * 0.5)
-        return new{T}(v)
+        return new{eltype(VT), VT}(v)
     end
 end
 
@@ -47,11 +47,11 @@ function angles_t(t::Matrix{T}) where T
     agls = zeros(T, ν)
     # last angle is always π/2
     agls[ν] = π/2
-    agls[1] = asin(tν[1])
+    agls[1] = asin(clamp(tν[1], -1, 1))
     Σcos::T = 1.
     for k = 2:ν-1
         Σcos *= cos(agls[k-1])
-        agls[k] = asin(tν[k] / Σcos)
+        agls[k] = asin(clamp(tν[k] / Σcos, -1, 1))
         if agls[k] ≈ π/2 || cos(agls[k]) ≈ 0.
             return agls
         end
