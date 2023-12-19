@@ -15,7 +15,11 @@ function Angles(n_dim::Int)
     n_dim < 1 && @error  "dimension of orthogonal matrix should be larger than 1"
     n_angles::Int = n_dim*(n_dim-1)/2
     angles = (rand(Float64, n_angles) .- 0.5) * π
-    return Angles(angles)
+    layered = flat_to_layered(angles)
+    for agl in layered
+        agl[end] = (rand(Float64) - 0.5) * 2π
+    end
+    return Angles(layered_to_flat(layered))
 end
 
 function layered_to_flat(θl::Vector{Vector{T}}) where T
