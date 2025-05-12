@@ -1,19 +1,25 @@
 module EulerAngles
 using LinearAlgebra
-export Angles
+export Angles, Matrix
 
 mutable struct Angles{T, VT<:AbstractVector{T}}
     θs::VT
     function Angles(v::VT) where VT
         n_angles = size(v,1)
         n_dims = Int((sqrt(8*n_angles+1) - 1) * 0.5)
+        @assert n_dims >= 1 "number of angles should be at least 1"
         return new{eltype(VT), VT}(v)
     end
 end
 
-function Angles(n_dim::Int)
-    n_dim < 1 && @error  "dimension of orthogonal matrix should be larger than 1"
-    n_angles::Int = n_dim*(n_dim-1)/2
+"""
+    Angles(n::Int)
+
+Generate a set of random Euler angles representing a n-dimensional orthonormal matrix.
+"""
+function Angles(n::Int)
+    @assert n >= 2  "dimension of orthogonal matrix should be at least 2"
+    n_angles::Int = n*(n-1)/2
     angles = (rand(Float64, n_angles) .- 0.5) * π
     layered = flat_to_layered(angles)
     for agl in layered
@@ -93,6 +99,11 @@ function matrix_a(agls::Vector{T}) where T
     return ma
 end
     
+"""
+    Angles(t::Matrix{T})
+
+Construct Euler Angles from a orthonormal matrix `t`.
+"""
 function Angles(t::Matrix{T}) where T
     @assert [norm(t[:,i]) for i in 1:size(t, 2)] ≈ ones(size(t, 1))
     n = size(t, 1)
@@ -111,6 +122,11 @@ function Angles(t::Matrix{T}) where T
     return Angles(flat)
 end
     
+"""
+    Matrix(angles::Angles{T})
+
+Generate the orthonormal matrix represented by a set of Euler Angles.
+"""
 function Base.Matrix(angles::Angles{T}) where T
     flat = angles.θs
     agls = flat_to_layered(flat)

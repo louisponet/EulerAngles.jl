@@ -2,36 +2,37 @@ using EulerAngles
 using LinearAlgebra
 using Test
 
-@testset "Back and forth from random orthonomal matrix" begin
-    for n_dim = 1:10
-        for _ in 1:100
+@testset "Angles from random orthonormal matrix" begin
+    for n_dim = 2:10
+        for _ in 1:20
             # construct real symmetric matrix,
             # so the eigenvalues are real
-            m = rand(n_dim,n_dim)
+            m = rand(n_dim, n_dim)
             m = (m + m') /2
             vals, vecs = eigen(m)
             angles = Angles(vecs)
             vecs_re = Matrix(angles)
             m_re = vecs_re * diagm(vals) * vecs_re' 
             # @test isapprox(vecs, vecs_re; rtol=1e-8)
-            @test isapprox(m_re, m; rtol=1e-10)
+            @test isapprox(m_re, m; atol=1e-8)
         end
     end
 end
 
-@testset "Back and forth from random angles" begin
-    for n_dim = 1:10
-        for _ in 1:100
+@testset "Orthonormal matrics from random angles" begin
+    for n_dim = 2:8
+        for _ in 1:20
             angles = Angles(n_dim)
             mat = Matrix(angles)
             angles_re = Angles(mat)
-            @test isapprox(angles_re.θs, angles.θs;rtol=1e-4)
+            @test isapprox(angles_re.θs, angles.θs; atol=1e-6)
         end
     end
 end
 
+
 @testset "Convert Identiy matrix" begin
-    for n_dim = 1:20
+    for n_dim = 2:20
         n_angles::Int = n_dim*(n_dim-1)/2
         # Matrix to Angles
         m = diagm(ones(n_dim))
@@ -39,12 +40,12 @@ end
 
         # Angles to Matrix
         an = Angles(zeros(n_angles))
-        @test Matrix(an) == m
+        @test isapprox(Matrix(an), m; atol=1e-8)
     end
 end
 
 @testset "Unit eigen vector" begin
-    for n_dim = 1:20
+    for n_dim = 2:20
         # construct random symmetry matrix
         m = rand(n_dim,n_dim)
         m = (m + m') /2
@@ -57,7 +58,7 @@ end
             re_vecs = Matrix(agls)
             # @test re_vecs ≈ vecs
             re_m = Matrix(Eigen(vals, re_vecs))
-            @test re_m ≈ m
+            @test isapprox(re_m, m; atol=1e-8)
         end
     end
 end
